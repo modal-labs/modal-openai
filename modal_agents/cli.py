@@ -309,6 +309,45 @@ def deploy(pool_name: PoolNameArg | None = None) -> None:
 
 
 @app.command
+def webhook_secret(
+    pool_name: PoolNameArg,
+    secret: str | None = None,
+) -> None:
+    """Update webhook signing secret for a pool.
+
+    After creating the webhook in OpenAI Project Settings, run this command
+    to add the signing secret to the Modal Secret.
+
+    Example:
+        modal-agents webhook-secret my-agent --secret sk_live_...
+    """
+    secret_name = f"openai-agents-{pool_name}"
+
+    if not secret:
+        secret = _WizardPrompt.ask(
+            "Webhook signing secret from OpenAI (sk_live_...)"
+        )
+
+    try:
+        subprocess.run(
+            [
+                "modal",
+                "secret",
+                "update",
+                secret_name,
+                f"OPENAI_WEBHOOK_SECRET={secret}",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        _console.print(f"✓ Updated {secret_name}")
+        _console.print(f"\nWebhook is now ready to receive events from OpenAI")
+    except subprocess.CalledProcessError as e:
+        _console.print(f"[red]Error updating secret: {e}[/red]")
+        sys.exit(1)
+
+
+@app.command
 def destroy(pool_name: PoolNameArg, yes: YesOption = False) -> None:
     """Remove a pool and its webhook handler."""
     if not yes and not _WizardConfirm.ask(
