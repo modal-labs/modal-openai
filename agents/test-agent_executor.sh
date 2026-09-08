@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Simple wrapper to start the executor in a Modal sandbox
+set -euo pipefail
 
-set -e
-
-ENVIRONMENT_ID="$1"
-OPENAI_EXECUTOR_API_KEY="${OPENAI_EXECUTOR_API_KEY:?Must set OPENAI_EXECUTOR_API_KEY}"
-
-mkdir -p /workspace
-cd /workspace
+ENVIRONMENT_ID="${1:?Usage: executor.sh ENVIRONMENT_ID}"
+: "${CODEX_API_KEY:?Must set CODEX_API_KEY to the restricted executor key}"
+WORKSPACE="${MODAL_AGENTS_WORKSPACE:-/workspace}"
+mkdir -p "$WORKSPACE"
+cd "$WORKSPACE"
 
 exec codex exec-server \
     --remote https://api.openai.com/v1/agents/api \

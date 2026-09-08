@@ -1,25 +1,23 @@
-"""Generated OpenAI Agents API configuration."""
+"""Sample pool: set OPENAI_AGENT_ID to a real preview agent before deploying."""
+
+import os
 
 import modal
 
-# Modal Secret containing OPENAI_API_KEY and OPENAI_EXECUTOR_API_KEY
-OPENAI_SECRET_NAME = "openai-agents-test-agent"
+from modal_agents.pool import Pool
 
-# OpenAI Agent ID (create via API or CLI)
-OPENAI_AGENT_ID = "agent_auto"
-
-# Additional Modal Secrets for the sandbox
-WORKER_SECRET_NAMES = ()
-
-# Sandbox configuration
-pool = {
-    "name": "test-agent",
-    "agent_id": OPENAI_AGENT_ID,
-    "image": modal.Image.debian_slim(python_version="3.14")
+pool = Pool(
+    name="test-agent",
+    agent_id=os.environ["OPENAI_AGENT_ID"],
+    image=(
+        modal.Image.debian_slim()
         .apt_install("git", "nodejs", "npm", "ripgrep")
-        .run_commands("npm install -g @openai/codex@alpha"),
-    # Uncomment to add GPU:
-    # "gpu": "A10G",
-    # "cpu": 4,
-    # "memory": 16384,
-}
+        # Pin a tested executor version before production use.
+        .run_commands("npm install -g @openai/codex@alpha", "mkdir -p /workspace")
+    ),
+    cpu=2,
+    memory=4096,
+    timeout=1800,
+    # gpu="A10G",
+    # worker_secret_names=("my-data-secret",),
+)

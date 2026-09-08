@@ -1,68 +1,92 @@
-# Modal + OpenAI Agents API
+# modal-openai
 
-Deploy OpenAI Agents API sessions with Modal sandboxes. The agent runs in OpenAI's managed harness, while code execution happens in your Modal sandbox.
+Run **OpenAI Agents API preview** sessions in [Modal Sandboxes](https://modal.com/docs/guide/sandboxes).
+OpenAI runs the agent harness; a signed webhook queues a Modal worker that starts
+an isolated executor for the session.
 
-## Quick Start
+You need an OpenAI project with Agents API access, an existing
+agent ID, a separate restricted executor key, Python 3.12+, and a Modal account.
 
-### Install
+## Getting started
 
-```bash
-uv pip install -e .
-```
-
-### Initialize a Pool
-
-```bash
-modal-agents init research-agent
-```
-
-The wizard will:
-1. Ask for your OpenAI API key
-2. Ask for your restricted executor key  
-3. List existing agents or create a new one
-4. Generate pool configuration and webhook handler
-5. Optionally deploy the webhook handler to Modal
-
-### Generated Files
-
-After `init`, you'll have:
-
-- **`agents/research-agent.py`** — Pool configuration (CPU, GPU, dependencies)
-- **`hooks/research-agent_handler.py`** — Webhook handler for sandbox lifecycle
-- **`agents/research-agent_executor.sh`** — Executor startup script
-
-### Deploy
+From this checkout, install the package and configure Modal:
 
 ```bash
-modal-agents deploy research-agent
+uv sync --locked
+uv run modal setup
+uv run modal-agents init research-agent --agent-id agent_YOUR_ID --no-deploy
 ```
 
-### Register the Webhook
+The wizard prompts privately for `OPENAI_API_KEY` and
+`OPENAI_EXECUTOR_API_KEY`. For unattended setup, set those variables and
+`OPENAI_AGENT_ID`, then use `--yes`. Application and executor keys must differ.
+See [Credentials](USAGE.md#credentials) for executor key permissions and ownership.
 
-1. Go to [OpenAI Project Settings → Webhooks](https://platform.openai.com/settings/project/webhooks)
-2. Create webhook pointing to deployed handler
-3. Subscribe to: `agent.session.action_required`, `agent.session.failed`
-4. Save signing secret and add to Modal Secret
+Initialization creates three separate Modal secrets and three editable files:
 
-## How It Works
+- `agents/research-agent.py`: image, resources, timeout, agent ID, worker secrets.
+- `agents/research-agent_executor.sh`: executor startup command.
+- `hooks/research-agent_handler.py`: deployment entry point.
 
-OpenAI sends webhook → Handler starts Modal sandbox → Executor connects back → Agent runs
-
-## API Keys
-
-- **`OPENAI_API_KEY`**: Full permissions, manage agents (app only)
-- **`OPENAI_EXECUTOR_API_KEY`**: Restricted to `List models`, passed to sandbox only
-
-## Commands
+Review the pool and deploy it:
 
 ```bash
-modal-agents init my-agent      # Create pool
-modal-agents list               # Show agents
-modal-agents deploy my-agent    # Deploy handler
-modal-agents destroy my-agent   # Remove pool
+uv run modal-agents doctor research-agent --local
+uv run modal-agents deploy research-agent
 ```
 
-## References
+Register the printed endpoint in [OpenAI Project Webhooks](https://platform.openai.com/settings/project/webhooks)
+for `agent.session.action_required` and `agent.session.failed`. Copy the signing
+secret, then update and redeploy:
 
-- [OpenAI Agents API Docs](https://platform.openai.com/docs/agents)
-- [Modal Sandboxes](https://modal.com/docs/guide/sandboxes)
+```bash
+uv run modal-agents webhook-secret research-agent
+uv run modal-agents deploy research-agent
+uv run modal-agents doctor research-agent
+```
+
+Until the signing secret is configured, the endpoint returns HTTP 503.
+Create a self-hosted session for the configured agent with
+`workspace_directory="/workspace"`. See [USAGE.md](USAGE.md) for the full
+walkthrough, customization, credential rotation, and troubleshooting.
+
+## How it works
+
+1. The endpoint verifies the original webhook body and queues a reconciliation call.
+2. One worker per pool retrieves current session state from OpenAI, filtering by agent ID.
+3. Required environment connections start a sandbox named after the session ID.
+   Duplicate deliveries reuse the running sandbox; deployment races also reuse the winner.
+4. The sandbox receives only its executor key and explicitly configured worker secrets.
+5. Failed or deleted sessions are cleaned up when reconciled. Each sandbox also has a
+   hard lifetime limit (30 minutes by default).
+
+The webhook only acknowledges after Modal accepts the queued call. Worker failures
+retry up to three times. This is an event-driven integration: exhausted retries
+and missed deletion events need operator reconciliation. Filesystems are ephemeral;
+there is no snapshot/restore or periodic sweeper. Use one pool per agent to avoid
+provisioning duplicate executors across separately deployed apps.
+
+## Observability
+
+Lifecycle logs identify pools, sessions, and sandboxes. OpenTelemetry spans cover
+CLI operations, webhook verification and queueing, API retrieval, and sandbox
+operations. Export is quiet by default. Set an OTLP endpoint to enable it;
+see [OTEL.md](OTEL.md) for configuration, correlation, and privacy details.
+
+## Development
+
+```bash
+uv sync --locked --all-groups
+uv run ruff format --check modal_agents tests agents hooks
+uv run ruff check modal_agents tests agents hooks
+uv run mypy
+uv run basedpyright
+uv run coverage run -m pytest
+uv run coverage report
+uv build
+```
+
+CI enforces these checks, at least 80% branch-aware coverage, wheel installation,
+and tests on Python 3.12 and 3.14. Tests verify webhook signatures and use mocked
+cloud services. Run the [live smoke checklist](USAGE.md#live-smoke-check) to verify
+deployment and executor connectivity before production or after executor upgrades.

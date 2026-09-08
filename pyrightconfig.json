@@ -1,0 +1,7 @@
+{
+  "include": ["modal_agents"],
+  "typeCheckingMode": "strict",
+  "pythonVersion": "3.12",
+  "venvPath": ".",
+  "venv": ".venv"
+}

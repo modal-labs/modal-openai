@@ -5,40 +5,62 @@ build-backend = "hatchling.build"
 [project]
 name = "modal-openai"
 version = "0.1.0"
-description = "Scaffold OpenAI webhook handlers and Modal sandbox configurations"
+description = "Webhook-managed OpenAI Agents API sessions in Modal sandboxes"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "cyclopts>=4.25",
-    "fastapi>=0.115",
-    "modal>=1.5.5",
-    "openai>=1.92",
-    "rich>=13.7",
+    "cyclopts>=4.25,<5",
+    "fastapi>=0.115,<1",
+    "httpx>=0.28.1,<1",
+    "logfire[httpx]>=4.41,<5",
+    "modal>=1.5.5,<2",
+    "openai>=2,<4",
+    "opentelemetry-api>=1.44,<2",
+    "pydantic>=2.7,<3",
+    "rich>=13.7,<16",
 ]
 
 [project.scripts]
-modal-agents = "modal_agents.cli:app"
+modal-agents = "modal_agents.cli:run"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "pytest>=7.4",
+    "basedpyright>=1.39.10",
+    "coverage>=7.10",
+    "mypy>=1.17",
+    "pytest>=9.1.1",
     "ruff>=0.15",
-    "mypy>=1.7",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["modal_agents"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-config --strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = ["modal_agents"]
+omit = ["modal_agents/__main__.py"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+
 [tool.ruff]
+line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "I", "B", "UP", "RUF", "BLE", "C4", "SIM", "PL"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
+[tool.ruff.lint.per-file-ignores]
+"modal_agents/cli.py" = ["PLR0913"]
+"tests/*" = ["PLR2004"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["modal_agents"]
-check_untyped_defs = true
+strict = true
+packages = ["modal_agents"]
+plugins = ["pydantic.mypy"]

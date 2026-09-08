@@ -1,76 +1,50 @@
 """Source templates for generated pool files."""
 
-POOL_CONFIG = '''"""OpenAI Agents API pool configuration; wire into the webhook handler."""
+POOL_CONFIG = '''"""Editable sandbox configuration for one OpenAI agent."""
 
 import modal
 
-OPENAI_SECRET_NAME = $secret_name
-OPENAI_AGENT_ID = $agent_id
-WORKER_SECRET_NAMES = ()
+from modal_agents.pool import Pool
 
-pool = {
-    "name": $pool_name,
-    "agent_id": OPENAI_AGENT_ID,
-    "image": (
-        modal.Image.debian_slim(python_version="3.13")
+pool = Pool(
+    name=$pool_name,
+    agent_id=$agent_id,
+    image=(
+        modal.Image.debian_slim()
         .apt_install("git", "nodejs", "npm", "ripgrep")
-        .run_commands("npm install -g @openai/codex@alpha")
+        # Pin a tested executor version before production use.
+        .run_commands("npm install -g @openai/codex@alpha", "mkdir -p /workspace")
     ),
-    # "gpu": "A10G",
-    # "cpu": 4,
-    # "memory": 16384,
-}
-'''
-
-WEBHOOK_HANDLER = '''"""Verify and log OpenAI webhooks. Sandbox lifecycle handling is not implemented."""
-
-import json
-import logging
-
-import modal
-from fastapi import HTTPException, Request
-from openai import InvalidWebhookSignatureError, OpenAI
-
-logger = logging.getLogger(__name__)
-app = modal.App($secret_name)
-image = modal.Image.debian_slim(python_version="3.13").pip_install(
-    "fastapi>=0.115", "openai>=1.92"
+    cpu=2,
+    memory=4096,
+    timeout=1800,
+    # gpu="A10G",
+    # worker_secret_names=("my-data-secret",),
 )
-
-
-@app.function(image=image, secrets=[modal.Secret.from_name($secret_name)])
-@modal.fastapi_endpoint(method="POST")
-async def webhook(request: Request) -> dict[str, str]:
-    raw = await request.body()
-    with OpenAI() as client:
-        try:
-            client.webhooks.verify_signature(raw, request.headers)
-        except InvalidWebhookSignatureError as exc:
-            raise HTTPException(status_code=400, detail="Invalid signature") from exc
-
-    try:
-        payload = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise HTTPException(status_code=400, detail="Invalid JSON") from exc
-    if not isinstance(payload, dict) or not isinstance(payload.get("type"), str):
-        raise HTTPException(status_code=400, detail="Event type must be a string")
-
-    event_type = payload["type"]
-    logger.info("Received %s event", event_type)
-    # TODO: Start sandboxes on agent.session.action_required and clean up on failure.
-    return {"status": "ok", "event_type": event_type}
 '''
 
-EXECUTOR_WRAPPER = '''#!/usr/bin/env bash
-set -eu
+WEBHOOK_HANDLER = '''"""Deploy this pool's signed webhook and sandbox reconciliation worker."""
+
+from pathlib import Path
+
+from modal_agents.pool import load_pool
+from modal_agents.server import build_app
+
+root = Path(__file__).resolve().parents[1]
+pool = load_pool(root / "agents" / ($pool_name + ".py"))
+app = build_app(pool, root / "agents" / ($pool_name + "_executor.sh"))
+'''
+
+EXECUTOR_WRAPPER = """#!/usr/bin/env bash
+set -euo pipefail
 
 ENVIRONMENT_ID="${1:?Usage: executor.sh ENVIRONMENT_ID}"
-export CODEX_API_KEY="${OPENAI_EXECUTOR_API_KEY:?Must set OPENAI_EXECUTOR_API_KEY}"
-
-mkdir -p /workspace
-cd /workspace
+: "${CODEX_API_KEY:?Must set CODEX_API_KEY to the restricted executor key}"
+WORKSPACE="${MODAL_AGENTS_WORKSPACE:-/workspace}"
+mkdir -p "$WORKSPACE"
+cd "$WORKSPACE"
 
 exec codex exec-server \\
     --remote https://api.openai.com/v1/agents/api \\
     --environment-id "$ENVIRONMENT_ID"
-'''
+"""
