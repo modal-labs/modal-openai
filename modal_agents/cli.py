@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -48,99 +49,68 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any
 
-import httpx
 import modal
-from openai import OpenAI
+from fastapi import HTTPException, Request
+from openai import InvalidWebhookSignatureError, OpenAI
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-OPENAI_EXECUTOR_API_KEY = os.environ.get("OPENAI_EXECUTOR_API_KEY")
-OPENAI_WEBHOOK_SECRET = os.environ.get("OPENAI_WEBHOOK_SECRET")
-OPENAI_AGENT_ID = os.environ.get("OPENAI_AGENT_ID")
+app = modal.App("openai-agents-$pool_name")
 
-app = modal.App("openai-agents-handler")
+webhook_image = (
+    modal.Image.debian_slim(python_version="3.13")
+    .pip_install(
+        "fastapi>=0.115.0",
+        "openai>=1.92.0",
+    )
+)
+
+secrets = modal.Secret.from_dict(
+    {
+        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", ""),
+        "OPENAI_WEBHOOK_SECRET": os.environ.get("OPENAI_WEBHOOK_SECRET", ""),
+    }
+)
 
 
-def verify_webhook_signature(payload: bytes, headers: dict[str, str]) -> bool:
-    """Verify OpenAI webhook signature using the configured secret."""
-    from openai import OpenAI
-
-    client = OpenAI(api_key=OPENAI_API_KEY)
+def verify_webhook_signature(raw: bytes, headers: dict[str, str]) -> bool:
+    """Verify OpenAI webhook signature."""
+    client = OpenAI(
+        api_key=os.environ["OPENAI_API_KEY"],
+        webhook_secret=os.environ["OPENAI_WEBHOOK_SECRET"],
+    )
     try:
-        client.webhooks.verify_signature(payload=payload, headers=headers)
+        client.webhooks.verify_signature(raw, headers)
         return True
-    except Exception:
+    except InvalidWebhookSignatureError:
         return False
 
 
-async def handle_agent_webhook(event: dict[str, Any]) -> None:
-    """Handle OpenAI Agents API webhook events."""
-    event_type = event.get("type")
-    session_id = event.get("data", {}).get("id")
-
-    logger.info(f"Received event: {event_type} for session {session_id}")
-
-    if event_type == "agent.session.action_required":
-        required_action = event.get("data", {}).get("required_action", {})
-        if required_action.get("type") == "environment_connection":
-            await handle_environment_connection(session_id)
-    elif event_type == "agent.session.failed":
-        await handle_session_failed(session_id)
-
-
-async def handle_environment_connection(session_id: str) -> None:
-    """Start or reconnect a sandbox for an agent session."""
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
-    # Retrieve current session to get environment ID
-    session = client.beta.agents.sessions.retrieve(session_id)
-    environment_id = session.environment.id
-
-    logger.info(f"Starting sandbox for environment {environment_id}")
-
-    # Start a Modal Sandbox with the executor
-    sandbox = await modal.Sandbox.create(
-        "bash",
-        "-c",
-        f"""
-        npm install -g @openai/codex@alpha
-        mkdir -p /workspace
-        CODEX_API_KEY={OPENAI_EXECUTOR_API_KEY} \\
-        codex exec-server \\
-          --remote https://api.openai.com/v1/agents/api \\
-          --environment-id {environment_id}
-        """,
-        app=app,
-        timeout=3600,
-    )
-
-    logger.info(f"Sandbox created: {sandbox.object_id}")
-
-
-async def handle_session_failed(session_id: str) -> None:
-    """Clean up when a session fails."""
-    logger.info(f"Session {session_id} failed, cleaning up...")
-    # Add cleanup logic here
-
-
-@app.web_endpoint()
-async def webhook_handler(request: dict[str, Any]) -> dict[str, str]:
+@app.function(image=webhook_image, secrets=[secrets], timeout=600)
+@modal.fastapi_endpoint(method="POST")
+async def webhook(request: Request) -> dict[str, str]:
     """Receive and handle OpenAI webhook events."""
-    payload = json.dumps(request).encode()
+    raw = await request.body()
+    headers = {k: v for k, v in request.headers.items()}
 
-    if not verify_webhook_signature(payload, {}):
-        return {"error": "Invalid signature"}, 401
+    if not verify_webhook_signature(raw, headers):
+        raise HTTPException(status_code=400, detail="Invalid signature")
 
     try:
-        await handle_agent_webhook(request)
-        return {"status": "ok"}, 200
-    except Exception as e:
-        logger.error(f"Error handling webhook: {e}")
-        return {"error": str(e)}, 500
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    event_type = payload.get("type")
+    logger.info(f"Received {event_type} event")
+
+    # TODO: Implement event handling
+    # - agent.session.created: Start sandbox
+    # - agent.session.failed: Cleanup sandbox
+
+    return {"status": "ok", "event_type": event_type}
 '''
 
 POOL_CONFIG_TEMPLATE = '''"""Generated OpenAI Agents API configuration."""
@@ -198,9 +168,9 @@ def _generate_pool_file(pool_name: str, agent_id: str, secret_name: str) -> Path
     _ensure_dirs()
 
     content = Template(POOL_CONFIG_TEMPLATE).substitute(
-        pool_name=repr(pool_name),
-        agent_id=repr(agent_id),
-        secret_name=repr(secret_name),
+        pool_name=pool_name,
+        agent_id=agent_id,
+        secret_name=secret_name,
     )
 
     pool_file = AGENTS_DIR / f"{pool_name}.py"
@@ -214,8 +184,9 @@ def _generate_webhook_handler(pool_name: str) -> Path:
     """Generate a webhook handler file."""
     _ensure_dirs()
 
+    content = Template(WEBHOOK_HANDLER_TEMPLATE).substitute(pool_name=pool_name)
     handler_file = HOOKS_DIR / f"{pool_name}_handler.py"
-    handler_file.write_text(WEBHOOK_HANDLER_TEMPLATE)
+    handler_file.write_text(content)
 
     _console.print(f"✓ Created {handler_file}")
     return handler_file
@@ -251,7 +222,12 @@ def init(
 
     # Get API key
     if not api_key:
-        api_key = _WizardPrompt.ask("OpenAI API key")
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+        if not api_key:
+            if yes:
+                _console.print("[red]Error: API key required. Set OPENAI_API_KEY env var[/red]")
+                sys.exit(1)
+            api_key = _WizardPrompt.ask("OpenAI API key")
 
     # Create Modal Secret
     secret_name = f"openai-agents-{pool_name}"
@@ -275,13 +251,15 @@ def init(
         _console.print("[yellow]Note: Secret may already exist[/yellow]")
 
     # Get agent configuration
-    agent_id = _WizardPrompt.ask(
-        "Agent ID (from OpenAI, or leave blank to create on first session)",
-        default="",
-    )
-
-    if not agent_id:
+    if yes:
         agent_id = "agent_auto"
+    else:
+        agent_id = _WizardPrompt.ask(
+            "Agent ID (from OpenAI, or leave blank to create on first session)",
+            default="",
+        )
+        if not agent_id:
+            agent_id = "agent_auto"
 
     # Generate files
     _console.print("\n[dim]Generating configuration...[/dim]")
