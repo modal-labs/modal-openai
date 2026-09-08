@@ -1,0 +1,29 @@
+[project]
+name = "modal-openai"
+version = "0.1.0"
+description = "OpenAI Agents API integration with Modal sandboxes"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-api-sdk",
+    "cyclopts>=0.19",
+    "httpx>=0.24",
+    "modal>=0.58",
+    "openai>=1.92",
+    "pydantic>=2.5",
+    "rich>=13.7",
+]
+
+[project.scripts]
+modal-agents = "modal_agents.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "ruff>=0.1",
+    "mypy>=1.7",
+    "coverage>=7.3",
+]
+
+[tool.uv.sources]
+agent-api-sdk = { git = "https://github.com/OpenAI-Early-Access/agents-api-python-preview.git" }
