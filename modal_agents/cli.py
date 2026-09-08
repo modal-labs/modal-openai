@@ -333,9 +333,10 @@ def webhook_secret(
             [
                 "modal",
                 "secret",
-                "update",
+                "create",
                 secret_name,
                 f"OPENAI_WEBHOOK_SECRET={secret}",
+                "--force",
             ],
             check=True,
             capture_output=True,
