@@ -1,31 +1,18 @@
 # modal-openai
 
-Run **OpenAI Agents API preview** sessions in [Modal Sandboxes](https://modal.com/docs/guide/sandboxes).
-OpenAI runs the agent harness; a signed webhook queues a Modal worker that starts
-an isolated executor for the session.
-
-You need an OpenAI project with Agents API preview access, Python 3.12+, and a
-Modal account. Setup can select an existing agent or create one.
-
-## Installation
-
-The source repository is public. PyPI publishing is being prepared; use the
-checkout instructions below until the first release is available.
-
-The Agents API preview SDK requires separate GitHub access. In a checkout,
-`uv sync --locked` installs it through the `preview` dependency group. A wheel
-installation supports deployment and inspection without that SDK; agent
-selection/creation and smoke tests require installing it separately:
-
-```bash
-python -m pip install "agent-api-sdk @ git+https://github.com/OpenAI-Early-Access/agents-api-python-preview.git@076c5f3fb9dbad9a1096a77943163fbc77061a0d"
-```
-
-See [RELEASING.md](RELEASING.md) for publishing setup.
+Run OpenAI Agents in [Modal Sandboxes](https://modal.com/docs/guide/sandboxes).
+OpenAI runs the agent; Modal provides an isolated environment where it can run
+commands and edit files.
 
 ## Getting started
 
+You need Python 3.12+, [uv](https://docs.astral.sh/uv/), a Modal account,
+and an OpenAI project with Agents API access. Your GitHub account must have
+access to the [Agents API SDK](https://github.com/OpenAI-Early-Access/agents-api-python-preview).
+
 ```bash
+git clone https://github.com/modal-labs/modal-openai.git
+cd modal-openai
 uv sync --locked
 uv run modal setup
 uv run modal-agents init research-agent
