@@ -6,16 +6,19 @@ commands and edit files.
 
 ## Getting started
 
-You need Python 3.12+, [uv](https://docs.astral.sh/uv/), a Modal account,
+You need Python 3.12+, [uv](https://docs.astral.sh/uv/), Git, a Modal account,
 and an OpenAI project with Agents API access. Your GitHub account must have
 access to the [Agents API SDK](https://github.com/OpenAI-Early-Access/agents-api-python-preview).
 
 ```bash
-git clone https://github.com/modal-labs/modal-openai.git
-cd modal-openai
-uv sync --locked
-uv run modal setup
-uv run modal-agents init research-agent
+mkdir my-agent
+cd my-agent
+uv venv
+source .venv/bin/activate
+uv pip install modal-openai \
+  "agent-api-sdk @ git+https://github.com/OpenAI-Early-Access/agents-api-python-preview.git@076c5f3fb9dbad9a1096a77943163fbc77061a0d"
+modal setup
+modal-agents init research-agent
 ```
 
 Setup guides you through selecting or creating an agent, configuring credentials,
@@ -33,13 +36,14 @@ signing secret back into setup.
 Ask the agent to run a command and tell you a joke:
 
 ```bash
-uv run modal-agents smoke research-agent \
+modal-agents smoke research-agent \
   --prompt "Use the shell to print hello, then tell me a joke."
 ```
 
 The command prints the agent's response and cleans up the test session and
 sandbox. It uses your OpenAI application key and incurs normal OpenAI and Modal
-usage charges.
+usage charges. If the key is stored in a Modal Secret, add
+`--api-key-secret YOUR_SECRET_NAME`.
 
 For sessions in your own application, see [examples/session.py](examples/session.py).
 Use the agent ID saved in `agents/research-agent.py` and the same workspace path
@@ -54,7 +58,7 @@ analysis, or set `gpu="A10G"` for GPU workloads.
 Deploy your changes:
 
 ```bash
-uv run modal-agents deploy research-agent
+modal-agents deploy research-agent
 ```
 
 New sandboxes use the updated configuration. Files remain available for the
