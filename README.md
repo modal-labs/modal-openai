@@ -65,3 +65,7 @@ sandbox's lifetime, which defaults to 30 minutes.
 - [CLI commands, credentials, and session management](USAGE.md)
 - [Logging and tracing](OTEL.md)
 - [Development and testing](CONTRIBUTING.md)
+
+## License
+
+[MIT](LICENSE).

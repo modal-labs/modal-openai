@@ -7,6 +7,8 @@ name = "modal-openai"
 version = "0.1.0"
 description = "Webhook-managed OpenAI Agents API sessions in Modal sandboxes"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "cyclopts>=4.25,<5",

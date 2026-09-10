@@ -18,8 +18,7 @@ register a pending GitHub publisher:
 Create the matching GitHub environment `pypi`. A pending publisher does not
 reserve the package name; the first successful upload creates the project.
 
-The project currently has no license file. Choose and add the intended license
-before releasing it for reuse.
+The project is distributed under the [MIT license](LICENSE).
 
 ## Release
 
