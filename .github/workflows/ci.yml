@@ -17,13 +17,12 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.12"
-      - run: uv sync --locked --all-groups
-      - run: uv run ruff format --check modal_agents tests agents hooks
-      - run: uv run ruff check modal_agents tests agents hooks
-      - run: uv run mypy
-      - run: uv run basedpyright
-      - run: uv run coverage run -m pytest
-      - run: uv run coverage report
+      - run: uv sync --locked --no-group preview
+      - run: uv run --no-group preview ruff format --check modal_agents tests agents hooks
+      - run: uv run --no-group preview ruff check modal_agents tests agents hooks
+      # Full SDK type checks run locally with the private preview group installed.
+      - run: uv run --no-group preview coverage run -m pytest
+      - run: uv run --no-group preview coverage report
       - run: uv build
       - name: Install and exercise the wheel outside the checkout
         run: |
@@ -46,5 +45,5 @@ jobs:
           enable-cache: true
           cache-suffix: py${{ matrix.python-version }}
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --locked --all-groups
-      - run: uv run pytest
+      - run: uv sync --locked --no-group preview
+      - run: uv run --no-group preview pytest

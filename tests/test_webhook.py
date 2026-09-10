@@ -125,3 +125,17 @@ def test_queue_failure_is_not_acknowledged(client):
 def test_oversized_body_is_rejected(client):
     assert client[0].post("/", content=b"x" * (MAX_WEBHOOK_BYTES + 1)).status_code == 413
     client[1].assert_not_awaited()
+
+
+def test_signed_readiness_challenge_never_enqueues(client):
+    body = json.dumps({"type": "modal_openai.readiness", "challenge": "a" * 32}).encode()
+    response = client[0].post("/", content=body, headers=signed_headers(body))
+    assert response.json() == {"status": "ready", "challenge": "a" * 32, "version": "1"}
+    client[1].assert_not_awaited()
+
+
+@pytest.mark.parametrize("challenge", [None, "", "unexpected", "z" * 32, 42])
+def test_readiness_rejects_malformed_challenge(client, challenge):
+    body = json.dumps({"type": "modal_openai.readiness", "challenge": challenge}).encode()
+    assert client[0].post("/", content=body, headers=signed_headers(body)).status_code == 400
+    client[1].assert_not_awaited()

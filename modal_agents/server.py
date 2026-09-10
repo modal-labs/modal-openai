@@ -14,6 +14,7 @@ from fastapi import HTTPException, Request
 from openai import InvalidWebhookSignatureError, OpenAI
 from opentelemetry.trace import SpanKind
 
+from modal_agents.checks import PENDING_SIGNING_SECRET, PROBE_TYPE, PROBE_VERSION, probe_webhook
 from modal_agents.pool import Pool
 from modal_agents.runtime import reconcile_session
 from modal_agents.telemetry import (
@@ -26,7 +27,6 @@ from modal_agents.telemetry import (
     telemetry_environment,
 )
 
-PENDING_SIGNING_SECRET = "pending-webhook-registration"
 MAX_WEBHOOK_BYTES = 1024 * 1024
 
 
@@ -109,7 +109,13 @@ async def _receive_webhook(
         raise HTTPException(status_code=400, detail="Invalid webhook signature") from error
     try:
         with span("modal_openai.webhook.parse"):
-            session_id = event_session_id(json.loads(text))
+            payload = json.loads(text)
+            session_id = event_session_id(payload)
+            if payload.get("type") == PROBE_TYPE:
+                challenge = payload.get("challenge")
+                if not isinstance(challenge, str) or not re.fullmatch(r"[a-f0-9]{32}", challenge):
+                    raise ValueError("Invalid readiness challenge")
+                return {"status": "ready", "challenge": challenge, "version": PROBE_VERSION}
     except ValueError as error:
         raise HTTPException(status_code=400, detail="Invalid webhook event") from error
     if session_id is None:
@@ -161,7 +167,9 @@ def build_app(pool: Pool, executor_path: Path) -> modal.App:
                     "gen_ai.conversation.id": session_id,
                 },
             ) as current:
-                outcome = await reconcile_session(pool, app, executor_image, session_id)
+                # Resolve at runtime: a deployed App holds an unpicklable live client.
+                worker_app = await modal.App.lookup.aio(pool.app_name)
+                outcome = await reconcile_session(pool, worker_app, executor_image, session_id)
                 set_attribute(current, "modal_openai.outcome", outcome)
                 return outcome
         finally:
@@ -185,5 +193,15 @@ def build_app(pool: Pool, executor_path: Path) -> modal.App:
             await reconcile.spawn.aio(session_id, carrier)
 
         return await receive_webhook(request, enqueue)
+
+    @app.function(  # pyright: ignore[reportUnknownMemberType]
+        image=controller_image,
+        serialized=True,
+        secrets=[modal.Secret.from_name(pool.signing_secret), *telemetry_secrets],
+        name="check_webhook",
+        timeout=120,
+    )
+    def check_webhook(endpoint: str) -> dict[str, str]:  # pyright: ignore[reportUnusedFunction]
+        return probe_webhook(endpoint, os.environ.get("OPENAI_WEBHOOK_SECRET", ""))
 
     return app

@@ -38,7 +38,7 @@ def test_generated_handler_registers_real_modal_functions(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)  # Paths resolve from the handler, independent of cwd.
     namespace = run_path(str(handler))
     assert namespace["app"].name == "openai-agents-test-pool"
-    assert set(functions) == {"webhook", "reconcile"}
+    assert set(functions) == {"webhook", "reconcile", "check_webhook"}
     assert all(isinstance(function, modal.Function) for function in functions.values())
 
 

@@ -171,7 +171,9 @@ def test_modal_worker_links_to_delivery_and_receives_export_settings(
             return decorate
 
     app = App()
-    monkeypatch.setattr(server.modal, "App", lambda name: app)
+    app_factory = Mock(return_value=app)
+    app_factory.lookup = SimpleNamespace(aio=AsyncMock(return_value=app))
+    monkeypatch.setattr(server.modal, "App", app_factory)
     monkeypatch.setattr(server.modal, "fastapi_endpoint", lambda **kwargs: lambda f: f)
     secret = Mock(return_value="telemetry-secret")
     monkeypatch.setattr(server.modal.Secret, "from_dict", secret)
@@ -202,6 +204,8 @@ def test_modal_worker_links_to_delivery_and_receives_export_settings(
     assert "traceparent" in carrier
     monkeypatch.setattr(server, "reconcile_session", AsyncMock(return_value="started"))
     assert asyncio.run(functions["reconcile"](session_id, carrier)) == "started"
+    app_factory.lookup.aio.assert_awaited_once_with(pool.app_name)
+    assert server.reconcile_session.call_args.args[1] is app
     exported = spans(capfire)
     job = exported["modal_openai.worker.reconcile"]
     enqueue = exported["modal_openai.webhook.enqueue"]
@@ -221,7 +225,8 @@ def test_cli_traces_actual_operation_and_flushes_without_arguments(
     )
     flushed = []
     monkeypatch.setattr(telemetry, "flush_telemetry", lambda: flushed.extend(spans(capfire)))
-    cli.webhook_secret("test", secret="cli-secret-sentinel")
+    monkeypatch.setattr(cli, "_check_files", Mock())
+    cli.webhook_secret("test", secret="whsec_dGVzdA==", no_deploy=True)
     exported = spans(capfire)
     command = exported["modal_openai.cli.webhook_secret"]
     assert exported["modal_openai.secret.update"].parent.span_id == command.context.span_id

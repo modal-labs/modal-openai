@@ -23,7 +23,15 @@ dependencies = [
 [project.scripts]
 modal-agents = "modal_agents.cli:run"
 
+[project.urls]
+Homepage = "https://github.com/modal-labs/modal-openai"
+Repository = "https://github.com/modal-labs/modal-openai"
+Issues = "https://github.com/modal-labs/modal-openai/issues"
+
 [dependency-groups]
+preview = [
+    "agent-api-sdk @ git+https://github.com/OpenAI-Early-Access/agents-api-python-preview.git@076c5f3fb9dbad9a1096a77943163fbc77061a0d",
+]
 dev = [
     "basedpyright>=1.39.10",
     "coverage>=7.10",
@@ -34,6 +42,9 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["modal_agents"]
+
+[tool.uv]
+default-groups = ["dev", "preview"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

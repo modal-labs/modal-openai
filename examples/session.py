@@ -1,9 +1,11 @@
-"""Run a disposable preview session; install agent_api_sdk separately (see USAGE.md)."""
+"""Run a disposable preview session (see USAGE.md for setup and sandbox cleanup)."""
 
 import argparse
 import asyncio
 
 from agent_api_sdk import AgentAPISDK
+
+from modal_agents.output import TextOutput
 
 
 async def main() -> None:
@@ -21,6 +23,7 @@ async def main() -> None:
         print(f"Session ID: {session.id}", flush=True)
         try:
             completed = False
+            output = TextOutput()
             async for event in session.stream(input=args.input):
                 if event.type in {
                     "session.turn.failed",
@@ -28,15 +31,16 @@ async def main() -> None:
                     "session.failed",
                 }:
                     raise RuntimeError(f"Agent failed: {event.type}")
-                if event.output_text_delta:
-                    print(event.output_text_delta, end="", flush=True)
+                output.add(event)
                 if event.type == "session.turn.completed":
                     completed = True
             if not completed:
                 raise RuntimeError(
                     "Stream ended without a completed turn; inspect saved session items"
                 )
-            print()
+            if not output.text:
+                raise RuntimeError("Completed turn returned no response text")
+            print(output.text)
         finally:
             if not args.keep_session:
                 await client.sessions.delete(session.id)
