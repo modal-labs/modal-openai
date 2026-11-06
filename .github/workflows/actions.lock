@@ -13,7 +13,7 @@ workflows:
         - 'actions/download-artifact@v4'
         - 'actions/upload-artifact@v4'
         - 'astral-sh/setup-uv@v10.0.1'
-        - 'pypa/gh-action-pypi-publish@v1.14.2'
+        - 'pypa/gh-action-pypi-publish@v1.14.3'
 dependencies:
     'actions/checkout@v7.0.1':
         ref: 'v7.0.1'
@@ -40,9 +40,9 @@ dependencies:
         commit: 'sha1-20cfd1bf945f4377ade1205e4dbc17946fc9a30d'
         owner_id: 115962839
         repo_id: 846733598
-    'pypa/gh-action-pypi-publish@v1.14.2':
-        ref: 'v1.14.2'
-        commit: 'sha1-dc37677b2e1c63e2034f94d8a5b11f265b73ba33'
+    'pypa/gh-action-pypi-publish@v1.14.3':
+        ref: 'v1.14.3'
+        commit: 'sha1-7245906fb61fa33a13554f9d5fb856fe61758086'
         owner_id: 647025
         repo_id: 178055147
         uses:
